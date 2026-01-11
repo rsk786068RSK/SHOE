@@ -1,0 +1,138 @@
+
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { detectShoeFromImage } from '../services/geminiService';
+import { Shoe } from '../types';
+
+interface CameraSearchModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  shoes: Shoe[];
+  onMatchFound: (shoe: Shoe) => void;
+}
+
+const CameraSearchModal: React.FC<CameraSearchModalProps> = ({ isOpen, onClose, shoes, onMatchFound }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+      })
+        .then(stream => { if (videoRef.current) videoRef.current.srcObject = stream; })
+        .catch(err => { setError("Could not access camera. Check permissions."); });
+    }
+    return () => {
+      if (videoRef.current && videoRef.current.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isOpen]);
+
+  const handleScan = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const canvas = canvasRef.current;
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const base64Image = dataUrl.split(',')[1];
+        
+        const result = await detectShoeFromImage(base64Image);
+        
+        if (result.confidence < 0.2) {
+          setError("Could not identify shoe. Try a clearer angle.");
+        } else {
+          // Find the best match in local inventory
+          const match = shoes.find(s => 
+            s.name.toLowerCase().includes(result.brand.toLowerCase()) || 
+            result.brand.toLowerCase().includes(s.brand.toLowerCase()) ||
+            s.name.toLowerCase().includes(result.color.toLowerCase())
+          );
+
+          if (match) {
+            onMatchFound(match);
+            onClose();
+          } else {
+            setError(`Identified as ${result.brand} ${result.color}, but not found in your inventory.`);
+          }
+        }
+      }
+    } catch (err: any) {
+      setError("Identification failed. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [shoes, onMatchFound, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+      <div className="bg-white w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in duration-300">
+        <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-slate-900">Visual Search</h2>
+            <p className="text-slate-500 text-sm">Point camera at a shoe to find it</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="relative aspect-video bg-slate-900">
+          <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <canvas ref={canvasRef} className="hidden" />
+          
+          <div className="absolute inset-0 pointer-events-none border-[40px] border-slate-900/20">
+            <div className="w-full h-full border-2 border-white/50 border-dashed rounded-3xl" />
+          </div>
+
+          {isProcessing && (
+            <div className="absolute inset-0 bg-indigo-600/40 backdrop-blur-sm flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mb-4" />
+                <span className="text-white font-black tracking-widest uppercase text-xs">Matching with Inventory...</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-8">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl text-sm font-bold border border-red-100 flex items-center">
+              <svg className="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleScan}
+            disabled={isProcessing}
+            className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl shadow-indigo-200 transition-all flex items-center justify-center space-x-3 active:scale-95 disabled:opacity-50"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span>Scan to Find Product</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CameraSearchModal;

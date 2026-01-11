@@ -1,0 +1,7 @@
+{
+  "name": "SoleTrack AI - Elite Shoe Inventory & Billing",
+  "description": "A comprehensive shoe store management system featuring an interactive gallery, detailed stock control, advanced sales reporting, and AI-powered billing using computer vision to detect shoe attributes.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
