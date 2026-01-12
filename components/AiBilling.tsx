@@ -7,6 +7,7 @@ interface AiBillingProps {
   onCompleteSale: (sale: SaleRecord) => void;
   isEnabled: boolean;
   currencySymbol: string;
+  isOnline: boolean;
 }
 
 interface DetectedShoe {
@@ -19,19 +20,27 @@ interface DetectedShoe {
   notes: string;
 }
 
-const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, currencySymbol }) => {
+const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, currencySymbol, isOnline }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [detectedInfo, setDetectedInfo] = useState<DetectedShoe | null>(null);
-  const [error, setError] = useState<{ message: string; type: 'permission' | 'notfound' | 'busy' | 'unknown' } | null>(null);
+  const [error, setError] = useState<{ message: string; type: 'permission' | 'notfound' | 'busy' | 'offline' | 'unknown' } | null>(null);
 
   const initCamera = useCallback(async () => {
     if (!isEnabled) return;
     setError(null);
+    
+    if (!isOnline) {
+      setError({
+        type: 'offline',
+        message: "Vision AI requires an active internet connection to process shoe recognition. Please reconnect to use this feature."
+      });
+      return;
+    }
+
     try {
-      // 1. Try environment (back) camera first
       const constraints = {
         video: { 
           facingMode: { ideal: 'environment' }, 
@@ -44,7 +53,6 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (e) {
-        // 2. Fallback to any available camera (front-facing or default)
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
       }
 
@@ -52,8 +60,6 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
         videoRef.current.srcObject = stream;
       }
     } catch (err: any) {
-      console.error("Camera Initialization Error:", err);
-      
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setError({
           type: 'permission',
@@ -76,7 +82,7 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
         });
       }
     }
-  }, [isEnabled]);
+  }, [isEnabled, isOnline]);
 
   useEffect(() => {
     initCamera();
@@ -88,7 +94,7 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
   }, [initCamera]);
 
   const captureAndDetect = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !isOnline) return;
     setIsProcessing(true);
     setStatusMessage('Scanning product features...');
 
@@ -105,7 +111,6 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
         const result = await detectShoeFromImage(base64Image);
         
         if (result.brand === "None detected" || result.confidence < 0.2) {
-          // Internal AI error, don't trigger the hardware error overlay
           setStatusMessage(result.notes || "Shoe not clearly detected. Try again.");
           setTimeout(() => setStatusMessage(''), 3000);
         } else {
@@ -118,7 +123,7 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
     } finally {
       setIsProcessing(false);
     }
-  }, []);
+  }, [isOnline]);
 
   const handleConfirmSale = () => {
     if (detectedInfo) {
@@ -152,32 +157,42 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
           <h1 className="text-4xl font-black text-slate-900 tracking-tight">Vision Billing</h1>
           <p className="text-slate-500 font-medium">Automatic Xerox detection and billing.</p>
         </div>
+        {!isOnline && (
+          <div className="bg-amber-100 text-amber-700 px-4 py-2 rounded-2xl text-xs font-black uppercase flex items-center space-x-2 border border-amber-200">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>Cloud Sync Paused</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl bg-slate-900 aspect-square border-8 border-white group">
-          <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <video ref={videoRef} autoPlay muted playsInline className={`w-full h-full object-cover ${!isOnline ? 'grayscale opacity-50' : ''}`} />
           <canvas ref={canvasRef} className="hidden" />
           
           {error && (
             <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-12 text-center animate-in fade-in zoom-in duration-300">
-               <div className="w-16 h-16 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-6">
+               <div className={`w-16 h-16 ${error.type === 'offline' ? 'bg-amber-500/20 text-amber-500' : 'bg-red-500/20 text-red-500'} rounded-full flex items-center justify-center mb-6`}>
                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                  </svg>
                </div>
                <h3 className="text-white text-lg font-black mb-3 uppercase tracking-wider">
-                 {error.type === 'permission' ? 'Permission Needed' : error.type === 'busy' ? 'Hardware Busy' : 'Camera Error'}
+                 {error.type === 'offline' ? 'Offline Restriction' : 'Camera Error'}
                </h3>
                <p className="text-slate-400 font-medium text-sm leading-relaxed mb-8">
                  {error.message}
                </p>
-               <button 
-                onClick={initCamera} 
-                className="bg-white text-slate-900 px-8 py-3 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-indigo-600 hover:text-white transition-all active:scale-95"
-               >
-                 Try Re-Initializing Camera
-               </button>
+               {error.type !== 'offline' && (
+                 <button 
+                  onClick={initCamera} 
+                  className="bg-white text-slate-900 px-8 py-3 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-indigo-600 hover:text-white transition-all active:scale-95"
+                 >
+                   Try Re-Initializing Camera
+                 </button>
+               )}
             </div>
           )}
 
@@ -187,22 +202,14 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
               <p className="font-bold tracking-widest uppercase text-[10px]">{statusMessage}</p>
             </div>
           )}
-
-          {!error && statusMessage && !isProcessing && (
-            <div className="absolute top-8 inset-x-0 flex justify-center z-20">
-              <div className="bg-slate-900/80 backdrop-blur-md text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10">
-                {statusMessage}
-              </div>
-            </div>
-          )}
           
           <div className="absolute bottom-8 inset-x-0 flex justify-center z-10">
             <button 
               onClick={captureAndDetect} 
-              disabled={isProcessing || !!error} 
+              disabled={isProcessing || !!error || !isOnline} 
               className="px-12 py-5 rounded-full shadow-2xl bg-white text-slate-900 hover:bg-indigo-600 hover:text-white font-black text-lg transition-all active:scale-95 disabled:opacity-50 disabled:scale-95"
             >
-              Snap to Bill
+              {!isOnline ? 'Reconnect to Scan' : 'Snap to Bill'}
             </button>
           </div>
         </div>
@@ -244,7 +251,9 @@ const AiBilling: React.FC<AiBillingProps> = ({ onCompleteSale, isEnabled, curren
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                  </svg>
               </div>
-              <p className="font-bold text-sm">Waiting for valid product detection...</p>
+              <p className="font-bold text-sm">
+                {!isOnline ? 'Vision processing disabled offline' : 'Waiting for valid product detection...'}
+              </p>
             </div>
           )}
         </div>

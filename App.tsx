@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [sales, setSales] = useState<SaleRecord[]>(INITIAL_SALES);
   const [selectedShoe, setSelectedShoe] = useState<Shoe | null>(null);
   const [activeReceipt, setActiveReceipt] = useState<SaleRecord | null>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [settings, setSettings] = useState<AppSettings>({
     aiBillingEnabled: true,
     currency: 'INR',
@@ -36,12 +37,23 @@ const App: React.FC = () => {
   }, [settings.currency]);
 
   useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     const savedShoes = localStorage.getItem('shoes');
     const savedSales = localStorage.getItem('sales');
     const savedSettings = localStorage.getItem('app-settings');
     if (savedShoes) setShoes(JSON.parse(savedShoes));
     if (savedSales) setSales(JSON.parse(savedSales));
     if (savedSettings) setSettings(JSON.parse(savedSettings));
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   useEffect(() => {
@@ -109,13 +121,19 @@ const App: React.FC = () => {
     setShoes(prev => prev.filter(s => s.id !== id));
   }, []);
 
+  const handleDataImport = useCallback((data: { shoes: Shoe[], sales: SaleRecord[], settings: AppSettings }) => {
+    if (data.shoes) setShoes(data.shoes);
+    if (data.sales) setSales(data.sales);
+    if (data.settings) setSettings(data.settings);
+  }, []);
+
   return (
-    <Layout activeView={activeView} setView={setActiveView}>
+    <Layout activeView={activeView} setView={setActiveView} isOnline={isOnline}>
       {activeView === 'gallery' && (
-        <InventoryGallery shoes={shoes} onSelectShoe={setSelectedShoe} currencySymbol={currencySymbol} />
+        <InventoryGallery shoes={shoes} onSelectShoe={setSelectedShoe} currencySymbol={currencySymbol} isOnline={isOnline} />
       )}
       {activeView === 'billing' && (
-        <AiBilling isEnabled={settings.aiBillingEnabled} onCompleteSale={handleCompleteAiSale} currencySymbol={currencySymbol} />
+        <AiBilling isEnabled={settings.aiBillingEnabled} onCompleteSale={handleCompleteAiSale} currencySymbol={currencySymbol} isOnline={isOnline} />
       )}
       {activeView === 'reports' && (
         <Reports sales={sales} currencySymbol={currencySymbol} />
@@ -123,10 +141,12 @@ const App: React.FC = () => {
       {activeView === 'settings' && (
         <SettingsPanel 
           shoes={shoes} 
+          sales={sales}
           onAddShoe={handleAddShoe} 
           onDeleteShoe={handleDeleteShoe} 
           settings={settings} 
           onUpdateSettings={setSettings} 
+          onDataImport={handleDataImport}
           currencySymbol={currencySymbol} 
         />
       )}

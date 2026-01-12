@@ -6,9 +6,10 @@ interface LayoutProps {
   children: React.ReactNode;
   activeView: AppView;
   setView: (view: AppView) => void;
+  isOnline: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeView, setView }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeView, setView, isOnline }) => {
   const navItems: { id: AppView; label: string; icon: string }[] = [
     { id: 'gallery', label: 'Gallery', icon: 'M4 6h16M4 10h16M4 14h16M4 18h16' },
     { id: 'billing', label: 'AI Billing', icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' },
@@ -20,13 +21,20 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setView }) => {
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
       {/* Sidebar Navigation */}
       <nav className="w-full md:w-64 bg-slate-900 text-white flex flex-col sticky top-0 md:h-screen z-50">
-        <div className="p-6 flex items-center space-x-3">
-          <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+        <div className="p-6 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <span className="text-xl font-bold tracking-tight">SoleTrack</span>
           </div>
-          <span className="text-xl font-bold tracking-tight">SoleTrack AI</span>
+          {!isOnline && (
+            <div className="md:hidden bg-amber-500 text-slate-900 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest">
+              Local
+            </div>
+          )}
         </div>
 
         <div className="flex-1 px-4 space-y-1 mt-4">
@@ -34,27 +42,43 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setView }) => {
             <button
               key={item.id}
               onClick={() => setView(item.id)}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
                 activeView === item.id 
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' 
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-              </svg>
-              <span className="font-medium">{item.label}</span>
+              <div className="flex items-center space-x-3">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
+                </svg>
+                <span className="font-medium">{item.label}</span>
+              </div>
+              {item.id === 'billing' && !isOnline && (
+                <div className="w-2 h-2 rounded-full bg-amber-500" title="AI requires internet" />
+              )}
             </button>
           ))}
         </div>
 
-        <div className="p-6 text-xs text-slate-500 border-t border-slate-800">
-          v1.0.4 Premium Enterprise
+        <div className="p-6 border-t border-slate-800 space-y-4">
+          {!isOnline && (
+            <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center space-x-3">
+              <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Offline Mode</span>
+                <span className="text-[8px] text-slate-400">Inventory & Billing active</span>
+              </div>
+            </div>
+          )}
+          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+            v1.1.0 PWA Elite
+          </div>
         </div>
       </nav>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar">
         <div className="max-w-7xl mx-auto">
           {children}
         </div>
